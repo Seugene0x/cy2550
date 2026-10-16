@@ -1,0 +1,183 @@
+Section A
+
+Explanation on what fixed_storage.py does
+
+from argon2 import PasswordHasher
+
+This imports the PasswordHasher class from the argon2-cffi library, which just handles all the Argon2 operations
+
+from argon2.exceptions import VerifyMismatchError
+
+Imports specific exceptions that Argon2 raises when a password doesnt match the specific hash its comparing it to. Importing this rather
+than catching all exceptions later on with raw python code makes sure errors are precise without any user error coming into play.
+
+hasher = PasswordHasher(time_cost=2, memory_cost=65536, parallelism=2)
+
+This creates a hasher instance with hard coded numbers rather than the library defaults it uses. time_cost=2 means only 2 iterations
+of the algorithm. memory_cost=65536 means that specifically 64 MB of ram is required to do each has computation which would defeat GPU based
+attacks since they have limited memory. parallelism=2 means 2 threads are used. These parameters make each hash expensive on purpose.
+
+def hash_password(password: str)->str:
+
+	return hasher.hash(password)
+
+This calls Argons hash function on the plaintext password that is passed in. The library automatically generates a random salt and
+runs the algorithm with the parameters I set then returns a single send-contained string that encodes the algorithm name, parameters,
+salt, and hash.
+
+def verify_password(password: str,stored_hash: str)-> bool:
+
+	try 
+		hasher.verify(stored_hash, password)
+		
+		return True
+		
+		except VerifyMismatchError:
+
+		return False
+
+This Extracts the salt and parameters from stored_hash, re-hashes the candidates password and compares each result. Returns true if they
+match and VerifyMismatchError only appears when the hash is corrupted instead of just having it return false.
+
+
+Q1: I started with a plain dictionary attack using the rockyou.txt since I read it'd be the fastest mode with no other modifications to it.
+ Using the rockyou.txt cracked 17 hashes instantly. This gave me the info that most of the passwords were simple words that were
+ easy to scan for. 28 more to crack, I started again with the same wordlist with a rules file best64.rule, I thought that it was the best second course of action since common passwords are usually a word or two with a little modification like capitlization, adding
+a number or replacing a letter in a word entirely. This cracked 4 more (example of one  Evans123). Then I tried the xato wordlist which
+cracked 0 new hashes, which told me the last few passwords werent in any wordlists given or something that would be posted online.
+I moved to brute force the remaining passwords using 6-string 7-string and - string vcharacters which cracked 5 more
+ (they looked like random strings of text) but didnt crack any more passwords.
+
+Q2: The plain dictionary attack cracked the most passwords with 17 hashes. This tell us that these users chose passwords that are in the
+passwords like (simple string passwords like sebastian, jessica, bob) These users went for the easy access of short simple passwords
+that're easy to remember. Their passwords were common.
+
+Q3:  The xato wordlist was the least cracked. I targeted mask attacks, and additional rule variations on it and I cracked zero passwords.
+The 18 passwords resisted every mode. A password resists when it doesnt have any correlation to any real word or common patterns that may
+be used. It goes against brute force when it's long enough for the brute force to take forver (for example a 8-char password has
+quadrillions of combinations.) Id like to believe these passwords are longer than 8-characters and just used the most random sequences
+with no structure.
+
+Section B
+
+Q4: the failed password crack tells us that the second hash is not MD5 even if it looks identical. MD5 isnt the only hash that outputs
+32 characters because NTLM does too. I did a little research for this question and I found that -m wouldnt crach a NTLM hash even if the
+password is in the wordlist , since the hash funtionality is different.
+
+The steps I would take is trying the command hashcat -a 0 -m 1000 hash.txt wordlist.txt and if it gets the password immediately it 
+confirms that the hash is HTLM. If it fails I would try different variations like  MD4 -m 900 LM (lan manager) -m 3000, double MD5 -m 2600
+and if none of these work I would look up a list of algorithms to crack a hash.
+
+Q5: I would try 32-Char hex first, 64-char hex second, and then $2b$12$ last. 
+
+32char MD5  hex strings because MD5 was designed specifically for speed. I know I have limited gpu space so this would be the best choice as
+MD5 has no real built in work factor because it just checks a dictionary. 
+
+64-char SHA 256 since its faster than bcrypt but noticably slower than MD5. Its similar having little to do workload on your graphics
+card but slower in a password cracking race against MD5
+
+$2b$12$ stirngs in bcrypt
+Id attack them last and depending on how much gpu time I have even skip it. bcrypt has a very costly time factor which would make our
+card run a ton of iterations per password. 
+
+Section C
+
+Q6: MD5 speed: 4,135.9 MH/s = 4,135,900,000 hashes per second
+
+bcrypt speed: 3,387 H/s = 3,387 hashes per second
+
+Ratio: 4,135,900,000 ÷ 3,387 = around 1,220,900
+
+In one second my machine tested over 4 billion md5 password candidates bbut only 3,387 bcrypt passwords. Thats a huge difference meaning
+an attacker could go through an entire dictionary like rockyou.txt against md5 in  under a second whule the same attack using bcrypt
+would take more thn an hour on my software or (the same software they're using) which means brute force attempts against bcrypt wouldnt
+be worth the longer or more complicated the password is.
+
+Q7: the answer would be around 208.8 billion
+
+Keyspace: 26^8 = 208,827,064,576
+
+MD5:
+208,827,064,576 ÷ 4,135,900,000 H/s = 50.5 seconds
+
+bcrypt:
+208,827,064,576 ÷ 3,387 H/s = 61,659,734 seconds
+÷ 60 = 1,027,662 minutes
+÷ 60 = 17,127 hours
+÷ 24 = 713 days	
+
+Section D
+ 
+Q8: Without cracking anything you can say that both the users have the same password. Since the hash is unsalted, identical input will
+always have the same output. If an attacker could crack one password they would know what the other password is if their accounts use
+the same password without any extra work. For an organization storing an unsalted table means that its one hash away from having every
+account taken and compromised.
+
+Q8 P2: A rainbow table attack works aainst unsalted.txt because the attackers system looks through a massive table of hash password pairs.
+Cracking them just becomes a simple lookup of finding the same hash in the table and reading out the password. It would fail against salted because the has is computed the same way but with a unique salt per user. For this attack the attacker would have to compute one table but also another table for the salt for EVERY user. which computationally is a lot for your storage. It wouldnt make the 
+hashes harder to crack but only worthless because the new tables you're making are useless against any other salt you're attacking.
+
+Q9: 
+
+Yes the salt still defeats rainbow tables because even though the attacker has both the hash and the salt, rainbow tables are still
+unuseable. Rainbow tables only work without knowing the salt in advance (without a salt). Since every row has a different salt, the
+attacker cant use a generic table against any of them. 
+
+The salt doesnt slow down a local hashcat that much. With both the hash and salt, hashcat computes md5(hash+salt) for each guess.
+the salt only uses one operation per guess which isnt very noticable. The attacker still runs at full md5 speed meaning the salt provides no protection against a targeted brute force or dictionary attack.
+
+The amount of cpu and gpu operations that're required to compute one hash. With the info we had earlier MD5 is over 4bil a second,
+while bcrypt is only 3,387  a second which is a major difference because of how many iterations each one needs. Algorithm cost affects
+the speed of each password crack.
+
+Q10:
+
+The developer is right that unique random salts beat a rainbow table. A precomputed table is useless when every password is hashed with
+a different salt.
+
+The vulneralbility tha still remains is that MD5 is still fast. At around 4 billion guesses per second indivial cracking is fast. The
+estimated brute-force time would be 26^6 which would be 308,915,776 possible passwords. 308,915,776 ÷ 4,135,900,000 = 0.075.
+Bcrypt would be 308,915,776 ÷ 3,387 = 91,208 seconds which would be 25 hours. The speed definitely matters in this case as a 6-letter
+lowercase password stored as a salted md5 cracks in under a second regaurdless of what salt you use. While the same password stored as
+ bcrypt takes over a day on the same hardware. 
+
+Q12: I used argon2-cffi for my library because I read it was a better choice specifially for MD5 since it's designed for speed. It'd
+preform as many operations as it per second which is what we wanted during this assignment (unless I wanted to sit here for a longer time).
+From our q6 benchmark the M4 GPU computes MD5 at 4,135,900,000 hashes per second. Argon2 with the parameters I set - which would be 
+(time_cost=2, memory_cost=65536, parallelism=2) runs around 3000 hashes a second. Around the same amount as bcrypt from our benchmark.
+An attacker who steals the database can try 4 billion MD5 candidates per second but only a few thousand Argon2 candidates per second on
+tje same hardware. Beyond raw speed Argon also has a good amount of memery (memory_cost=65536 = around 64 MB per hash) which also defeats
+GPU acceleration because those devices have limited memore per core. While MD5 uses memory and runs at full GPU speed.
+
+Q13: The two outputs would not be identical. They would be different strings every time even with the same input. This says that the library
+generates a fresh random salt on every call and embeds it directly into the output string. The output encodes the algorithm (salt,hash,parameters)
+all in one string without storing the salt seperately.
+
+Q13/2: 
+
+First hasher.verify(stored_hash, password) is called with the stored hash string and the plaintext password that was typed.
+
+Second: Argon2 covers the stored hash string and takes out the embedded salt and the algorithm parameters from it.
+
+Third: It re-calls the Argon2 function using that extracted salt and those parameters on the candidate password.
+
+Fourth: It compares the result of the last step with our hash using a comparison that runs in constant time
+
+Fifth: When they match verify returns true and the function returns True. If not verify raises Verifymismatcherror which would just return false
+
+The plaintext is never stored because the verification only needs the hash and it will not recover the original input. Since hash
+functions are one way you can check whether a candidate produces the ame output, but you cant reverse the hash to get back to the
+original password. The database only ever stores the output of the hash not the input.
+
+Q14: 1. Rainbow table attack - Against a plain MD5 storage an attacker could precompute a lookup table of MD5 password pairs and just
+crack hashes without a GPU needed. This would fail against fixed_storage.py because Argon2 creates a unique random salt every hash and
+automatically puts it within the output. The attacker would need a different hash table for every value which would be a lot storage wise.
+
+2. Brute forcing and dictionary attacks - Reffering to part2 a dictionary attack against MD5 at 4.1 billion guesses per second cracked 
+17/45 hashes from rockyou.txt in under a second but against fixed_storage.py the same attack would only run at 3000 guesses per second
+due to Argon2's cost factor and memory requirements. This would make the same attack around 1.2 million times slower turning an attack
+that would happen in under a second into weeks and possibly months on the same hardware.
+
+ 
+
+
